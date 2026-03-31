@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type SdrStatus = {
   lsusb: string;
@@ -24,6 +24,15 @@ type ScanResult = {
   error?: string;
 };
 
+type StationCandidate = {
+  frequencyMHz: number;
+  powerDb: number;
+};
+
+type FmScanResult = ScanResult & {
+  stations: StationCandidate[];
+};
+
 type SpectrumPoint = {
   frequencyMHz: number;
   powerDb: number;
@@ -37,6 +46,11 @@ type ScanForm = {
   gain: number;
 };
 
+type SavedStation = {
+  frequencyMHz: number;
+  name: string;
+};
+
 const initialForm: ScanForm = {
   startMHz: 88,
   endMHz: 108,
@@ -44,6 +58,11 @@ const initialForm: ScanForm = {
   integrationSec: 2,
   gain: 20.7,
 };
+
+const initialSavedStations: SavedStation[] = [
+  { frequencyMHz: 88.0, name: "Preset 88.0" },
+  { frequencyMHz: 99.5, name: "Preset 99.5" },
+];
 
 function parseSpectrum(outputPreview: string): SpectrumPoint[] {
   const firstLine = outputPreview
@@ -160,10 +179,38 @@ function SpectrumChart({ scan }: { scan: ScanResult }) {
 export function SdrDashboard() {
   const [status, setStatus] = useState<SdrStatus | null>(null);
   const [scan, setScan] = useState<ScanResult | null>(null);
+  const [fmScan, setFmScan] = useState<FmScanResult | null>(null);
   const [form, setForm] = useState<ScanForm>(initialForm);
   const [statusLoading, setStatusLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [fmScanLoading, setFmScanLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedStations, setSavedStations] = useState<SavedStation[]>(initialSavedStations);
+  const [currentFrequency, setCurrentFrequency] = useState(99.5);
+  const [stationName, setStationName] = useState("Station 99.5");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("fm-stations");
+      if (stored) {
+        const parsed = JSON.parse(stored) as SavedStation[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSavedStations(parsed);
+        }
+      }
+    } catch {
+      // Ignore localStorage read failures.
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("fm-stations", JSON.stringify(savedStations));
+  }, [savedStations]);
+
+  const streamUrl = useMemo(
+    () => `/api/fm/stream?frequency=${currentFrequency.toFixed(1)}&gain=${form.gain}`,
+    [currentFrequency, form.gain],
+  );
 
   async function checkStatus() {
     setStatusLoading(true);
@@ -185,9 +232,7 @@ export function SdrDashboard() {
     try {
       const response = await fetch("/api/sdr/scan", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
 
@@ -203,6 +248,38 @@ export function SdrDashboard() {
     }
   }
 
+  async function scanFmBand() {
+    setFmScanLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/fm/stations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startMHz: 87.5,
+          endMHz: 108,
+          binHz: 200000,
+          integrationSec: 2,
+          gain: form.gain,
+          thresholdDb: -26,
+          limit: 12,
+        }),
+      });
+      const data = (await response.json()) as FmScanResult & { error?: string };
+      if (!response.ok || data.error) {
+        throw new Error(data.error ?? "FM scan failed");
+      }
+      setFmScan(data);
+      if (data.stations[0]) {
+        tuneToFrequency(data.stations[0].frequencyMHz);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to scan FM stations.");
+    } finally {
+      setFmScanLoading(false);
+    }
+  }
+
   function updateField<K extends keyof ScanForm>(field: K, value: number) {
     setForm((current) => ({
       ...current,
@@ -210,14 +287,44 @@ export function SdrDashboard() {
     }));
   }
 
+  function tuneToFrequency(frequencyMHz: number) {
+    const snapped = Math.round(frequencyMHz * 10) / 10;
+    setCurrentFrequency(snapped);
+    setStationName(`Station ${snapped.toFixed(1)}`);
+  }
+
+  function saveStation(frequencyMHz: number) {
+    const snapped = Math.round(frequencyMHz * 10) / 10;
+    setSavedStations((current) => {
+      const existing = current.find((station) => station.frequencyMHz === snapped);
+      if (existing) {
+        return current;
+      }
+      return [...current, { frequencyMHz: snapped, name: stationName || `Station ${snapped.toFixed(1)}` }].sort(
+        (a, b) => a.frequencyMHz - b.frequencyMHz,
+      );
+    });
+  }
+
+  function removeStation(frequencyMHz: number) {
+    setSavedStations((current) => current.filter((station) => station.frequencyMHz !== frequencyMHz));
+  }
+
   return (
     <main className="container">
-      <section className="card">
-        <h1>RTL-SDR Control Panel</h1>
-        <p>
-          Check USB passthrough, then run a one-shot <code>rtl_power</code> scan from this Next.js app.
-        </p>
+      <section className="card hero-card">
+        <div>
+          <h1>Pi FM Scanner</h1>
+          <p>Scan the FM band, save stations, and listen live from the RTL-SDR inside Docker.</p>
+        </div>
+        <div className="hero-frequency">
+          <span>Now tuned</span>
+          <strong>{currentFrequency.toFixed(1)} MHz</strong>
+        </div>
+      </section>
 
+      <section className="card">
+        <h2>Device Status</h2>
         <div className="buttons">
           <button type="button" onClick={checkStatus} disabled={statusLoading}>
             {statusLoading ? "Checking..." : "Check USB / Device"}
@@ -242,6 +349,99 @@ export function SdrDashboard() {
             <pre>{status.rtlTestOutput || "No rtl_test output"}</pre>
           </div>
         ) : null}
+      </section>
+
+      <section className="card">
+        <h2>FM Radio</h2>
+        <div className="player-grid">
+          <label>
+            Frequency MHz
+            <input
+              type="number"
+              min="76"
+              max="108"
+              step="0.1"
+              value={currentFrequency}
+              onChange={(event) => tuneToFrequency(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            Station Name
+            <input type="text" value={stationName} onChange={(event) => setStationName(event.target.value)} />
+          </label>
+          <label>
+            Gain dB
+            <input
+              type="number"
+              step="0.1"
+              value={form.gain}
+              onChange={(event) => updateField("gain", Number(event.target.value))}
+            />
+          </label>
+        </div>
+
+        <div className="buttons">
+          <button type="button" onClick={() => saveStation(currentFrequency)}>
+            Save Current Station
+          </button>
+          <button type="button" onClick={scanFmBand} disabled={fmScanLoading}>
+            {fmScanLoading ? "Scanning FM..." : "Find FM Stations"}
+          </button>
+        </div>
+
+        <audio className="audio-player" controls src={streamUrl}>
+          <track kind="captions" />
+        </audio>
+
+        <div className="station-list">
+          {savedStations.map((station) => (
+            <article key={station.frequencyMHz} className="station-chip">
+              <div>
+                <strong>{station.name}</strong>
+                <p>{station.frequencyMHz.toFixed(1)} MHz</p>
+              </div>
+              <div className="buttons">
+                <button type="button" onClick={() => tuneToFrequency(station.frequencyMHz)}>
+                  Tune
+                </button>
+                <button type="button" className="secondary-button" onClick={() => removeStation(station.frequencyMHz)}>
+                  Remove
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Detected Stations</h2>
+        <p>The FM band scan uses `rtl_power` peaks to suggest likely stations, then you can tune and save them.</p>
+
+        {fmScan ? (
+          <div className="status">
+            <div className="station-list">
+              {fmScan.stations.map((station) => (
+                <article key={`${station.frequencyMHz}-${station.powerDb}`} className="station-chip">
+                  <div>
+                    <strong>{station.frequencyMHz.toFixed(1)} MHz</strong>
+                    <p>{station.powerDb.toFixed(2)} dB</p>
+                  </div>
+                  <div className="buttons">
+                    <button type="button" onClick={() => tuneToFrequency(station.frequencyMHz)}>
+                      Listen
+                    </button>
+                    <button type="button" onClick={() => saveStation(station.frequencyMHz)}>
+                      Save
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <SpectrumChart scan={fmScan} />
+          </div>
+        ) : (
+          <p className="muted">Run an FM scan to populate station candidates.</p>
+        )}
       </section>
 
       <section className="card">
@@ -277,15 +477,6 @@ export function SdrDashboard() {
               type="number"
               value={form.integrationSec}
               onChange={(event) => updateField("integrationSec", Number(event.target.value))}
-            />
-          </label>
-          <label>
-            Gain dB
-            <input
-              type="number"
-              step="0.1"
-              value={form.gain}
-              onChange={(event) => updateField("gain", Number(event.target.value))}
             />
           </label>
         </div>

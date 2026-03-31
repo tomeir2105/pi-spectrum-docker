@@ -1,11 +1,12 @@
 :root {
-  --bg-top: #f4f5f7;
-  --bg-bottom: #e3e8ee;
+  --bg-top: #eef4ff;
+  --bg-bottom: #d8e4f7;
   --card: #ffffff;
   --text: #13233a;
   --muted: #4f6179;
   --primary: #0057b8;
   --primary-strong: #08407e;
+  --secondary: #eef3fb;
   --danger: #b00020;
   --ok: #0f7a2f;
 }
@@ -61,6 +62,31 @@ a {
   gap: 0.8rem;
 }
 
+.hero-card {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  background:
+    radial-gradient(circle at top right, rgba(0, 87, 184, 0.12), transparent 32%),
+    linear-gradient(180deg, #ffffff, #f7fbff);
+}
+
+.hero-frequency {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: end;
+}
+
+.hero-frequency span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.hero-frequency strong {
+  font-size: clamp(2rem, 6vw, 3.4rem);
+  line-height: 1;
+  color: var(--primary-strong);
+}
+
 .card h1,
 .card h2 {
   line-height: 1.2;
@@ -86,6 +112,15 @@ button {
   cursor: pointer;
 }
 
+.secondary-button {
+  background: var(--secondary);
+  color: var(--text);
+}
+
+.secondary-button:hover:enabled {
+  background: #dfe8f6;
+}
+
 button:hover:enabled {
   background: var(--primary-strong);
 }
@@ -98,6 +133,12 @@ button:disabled {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.65rem;
+}
+
+.player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.65rem;
 }
 
@@ -114,6 +155,10 @@ input {
   padding: 0.55rem 0.65rem;
   color: var(--text);
   background: #fff;
+}
+
+.audio-player {
+  width: 100%;
 }
 
 pre {
@@ -193,14 +238,40 @@ code {
   font-size: 0.88rem;
 }
 
+.station-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.station-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #d7e0ef;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfdff, #f1f6fd);
+}
+
+.station-chip p {
+  color: var(--muted);
+}
+
 @media (max-width: 720px) {
   .container {
     width: calc(100vw - 1.25rem);
     padding-top: 1rem;
   }
 
+  .hero-card,
   .chart-meta,
   .chart-scale {
+    display: grid;
+  }
+
+  .station-chip {
+    align-items: stretch;
     display: grid;
   }
 }

@@ -7,6 +7,9 @@ Pi Spectrum Docker is a small Next.js spectrum analyzer for Raspberry Pi + RTL-S
 - Detects the RTL-SDR from inside the container with `lsusb` and `rtl_test`
 - Runs one-shot `rtl_power` sweeps from the web UI
 - Draws the latest scan as a browser-based spectrum trace
+- Scans the FM band for likely stations
+- Streams live FM audio in the browser with `rtl_fm` + `ffmpeg`
+- Saves station presets in the browser
 - Attempts to release conflicting kernel DVB drivers during container startup
 - Works on LAN through the Docker-published port
 
@@ -51,6 +54,8 @@ The frontend uses those routes to:
 - Confirm the dongle is visible inside Docker
 - Run a scan with user-selected frequency settings
 - Render the latest sweep as a lightweight spectrum chart
+- Find likely FM broadcast stations
+- Tune and listen to a selected FM frequency in the browser
 
 ## Docker Access Model
 
@@ -82,6 +87,14 @@ Some Raspberry Pi setups auto-attach the kernel DVB driver to the RTL-SDR. To av
 - `3000` and `3001` were already occupied on this Pi, so `3002` is used intentionally
 - `allowedDevOrigins` includes the Pi LAN host so browser access from other devices works in dev mode
 
+## FM Listening Notes
+
+- The browser player uses the `/api/fm/stream` route
+- The FM station finder uses `/api/fm/stations`
+- A single RTL-SDR dongle can only be owned by one process at a time
+- That means live audio and scanning cannot run at the exact same moment
+- The app now reports a friendly busy message instead of the raw `usb_claim_interface` error when that happens
+
 ## Useful Commands
 
 ```bash
@@ -109,3 +122,4 @@ This version has been verified to:
 - Reach the RTL-SDR from inside the container
 - Return live status from `/api/sdr/status`
 - Run `rtl_power` and display scan results in the browser
+- Stream FM audio to the browser from inside the container
