@@ -1,0 +1,19 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /lib/modules:/lib/modules:ro
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    privileged: true
+    group_add:
+      - plugdev
+    restart: unless-stopped
